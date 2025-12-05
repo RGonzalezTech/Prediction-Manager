@@ -72,7 +72,7 @@ confidence: Float (0.50 to 0.99)
 
 status: String/Enum (OPEN, RESOLVED, REDEEMED)
 
-outcome: Boolean (Nullable. TRUE = Creator was right, FALSE = Creator was wrong)
+outcome: Boolean (Nullable. TRUE = IT happened, FALSE = Didnt happen)
 
 created_at: DateTime
 

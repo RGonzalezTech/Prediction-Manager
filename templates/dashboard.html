@@ -136,8 +136,8 @@
             cardContent += `
                 <p class="text-center text-sm font-semibold mb-2">What was the outcome?</p>
                 <div class="flex justify-around">
-                    <button class="resolve-btn bg-green-500 text-white px-4 py-2 rounded-lg hover:bg-green-600" data-id="${p.id}" data-outcome="true">${p.creator.name} Was Right!</button>
-                    <button class="resolve-btn bg-red-500 text-white px-4 py-2 rounded-lg hover:bg-red-600" data-id="${p.id}" data-outcome="false">${p.creator.name} Was Wrong!</button>
+                    <button class="resolve-btn bg-green-500 text-white px-4 py-2 rounded-lg hover:bg-green-600" data-id="${p.id}" data-outcome="true">IT happened</button>
+                    <button class="resolve-btn bg-red-500 text-white px-4 py-2 rounded-lg hover:bg-red-600" data-id="${p.id}" data-outcome="false">Didnt happen</button>
                 </div>`;
         } else if (p.status === 'RESOLVED') {
             const creatorWon = p.outcome === true;
