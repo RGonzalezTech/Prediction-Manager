@@ -1,0 +1,203 @@
+{% extends "layout.html" %}
+
+{% block content %}
+<div class="flex justify-between items-center mb-4">
+    <h1 class="text-2xl font-bold">Prediction Manager</h1>
+    <div class="flex items-center">
+        <a href="/manage-categories" class="text-blue-500 mr-4">Manage Categories</a>
+        <a href="/manage-users" class="text-blue-500">Manage Participants</a>
+    </div>
+</div>
+
+<div id="scoreboard" class="text-xl text-center font-bold bg-white p-4 rounded-lg shadow mb-6"></div>
+
+<div class="mb-8">
+    <h2 class="text-xl font-bold mb-2">Pending Bets</h2>
+    <div id="pending-predictions" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+</div>
+
+<div class="mb-8">
+    <h2 class="text-xl font-bold mb-2">Active Bets</h2>
+    <div id="open-predictions" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+</div>
+
+<div>
+    <h2 class="text-xl font-bold mb-2">Settled Debts (Awaiting Payment)</h2>
+    <div id="resolved-predictions" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+</div>
+
+<a href="/new" class="fixed bottom-4 right-4 bg-blue-500 text-white p-4 rounded-full shadow-lg hover:bg-blue-600">
+    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+    </svg>
+</a>
+
+<!-- Accept Bet Modal -->
+<div id="accept-modal" class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full hidden">
+    <div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
+        <div class="mt-3 text-center">
+            <h3 class="text-lg leading-6 font-medium text-gray-900">Accept Bet</h3>
+            <div class="mt-2 px-7 py-3">
+                <p class="text-sm text-gray-500 mb-4">Please select who is accepting this bet.</p>
+                <select id="modal-user-select" class="w-full p-2 border rounded-md"></select>
+            </div>
+            <div class="items-center px-4 py-3">
+                <button id="modal-confirm-btn" class="px-4 py-2 bg-purple-500 text-white text-base font-medium rounded-md w-full shadow-sm hover:bg-purple-600 focus:outline-none focus:ring-2 focus:ring-purple-300">
+                    Confirm Acceptance
+                </button>
+                <button id="modal-cancel-btn" class="mt-2 px-4 py-2 bg-gray-200 text-gray-900 text-base font-medium rounded-md w-full shadow-sm hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-300">
+                    Cancel
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    let currentPredictionId = null;
+
+    async function fetchStats() {
+        const response = await fetch('/api/stats');
+        const debts = await response.json();
+        const scoreboard = document.getElementById('scoreboard');
+        scoreboard.innerHTML = '';
+        if (debts.length === 0) {
+            scoreboard.textContent = 'All debts are settled!';
+            return;
+        }
+        const debtList = document.createElement('div');
+        debts.forEach(debt => {
+            const debtElement = document.createElement('div');
+            debtElement.className = 'mb-2';
+            debtElement.innerHTML = `<span class="font-bold text-red-500">${debt.debtor}</span> owes <span class="font-bold text-green-500">${debt.creditor}</span>: <strong>${debt.amount.toFixed(2)}</strong> Units`;
+            debtList.appendChild(debtElement);
+        });
+        scoreboard.appendChild(debtList);
+    }
+
+    async function fetchPredictions() {
+        const response = await fetch('/api/predictions');
+        const predictions = await response.json();
+        ['pending-predictions', 'open-predictions', 'resolved-predictions'].forEach(id => document.getElementById(id).innerHTML = '');
+        
+        predictions.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+
+        predictions.forEach(p => {
+            const containerId = `${p.status.toLowerCase()}-predictions`;
+            const container = document.getElementById(containerId);
+            if (container) {
+                container.appendChild(createPredictionCard(p));
+            }
+        });
+    }
+
+    function createPredictionCard(p) {
+        const card = document.createElement('div');
+        card.className = 'bg-white p-4 rounded-lg shadow space-y-2';
+        const confidence = p.confidence * 100;
+        const oddsRatio = p.confidence / (1 - p.confidence);
+
+        let opponentText = '';
+        if (p.opponent) {
+            opponentText = `<div class="text-sm text-gray-600">vs. <strong>${p.opponent.name}</strong></div>`;
+        }
+
+        let cardContent = `
+            <div class="flex justify-between items-center">
+                <div class="font-bold text-lg">${p.description}</div>
+                <div class="text-xs bg-gray-200 text-gray-800 px-2 py-1 rounded-full">${p.category.name}</div>
+            </div>
+            <div class="text-sm text-gray-600">Created by: <strong>${p.creator.name}</strong></div>
+            ${opponentText}
+            <div class="text-sm text-gray-600">Risking <strong>${oddsRatio.toFixed(1)}</strong> units to win <strong>1</strong> unit (<strong>${confidence.toFixed(0)}%</strong> confidence)</div>
+            <div class="border-t pt-2">
+        `;
+
+        if (p.status === 'PENDING') {
+            cardContent += `<button class="accept-btn bg-purple-500 text-white w-full py-2 rounded-lg hover:bg-purple-600" data-id="${p.id}" data-creator-id="${p.creator.id}">Accept Bet</button>`;
+        } else if (p.status === 'OPEN') {
+            cardContent += `
+                <p class="text-center text-sm font-semibold mb-2">What was the outcome?</p>
+                <div class="flex justify-around">
+                    <button class="resolve-btn bg-green-500 text-white px-4 py-2 rounded-lg hover:bg-green-600" data-id="${p.id}" data-outcome="true">${p.creator.name} Was Right!</button>
+                    <button class="resolve-btn bg-red-500 text-white px-4 py-2 rounded-lg hover:bg-red-600" data-id="${p.id}" data-outcome="false">${p.creator.name} Was Wrong!</button>
+                </div>`;
+        } else if (p.status === 'RESOLVED') {
+            const creatorWon = p.outcome === true;
+            let summaryText = creatorWon ? `<strong class="text-green-500">${p.creator.name} won!</strong> ${p.opponent.name} owes 1 unit.` : `<strong class="text-red-500">${p.creator.name} lost!</strong> Owes ${p.opponent.name} ${oddsRatio.toFixed(2)} units.`;
+            cardContent += `<div class="text-center mb-2">${summaryText}</div><button class="redeem-btn bg-blue-500 text-white w-full py-2 rounded-lg hover:bg-blue-600" data-id="${p.id}">Mark as Paid</button>`;
+        }
+        cardContent += `</div>`;
+        card.innerHTML = cardContent;
+        return card;
+    }
+    
+    // Modal Logic
+    const modal = document.getElementById('accept-modal');
+    const modalUserSelect = document.getElementById('modal-user-select');
+
+    async function openModal(predictionId, creatorId) {
+        currentPredictionId = predictionId;
+        const response = await fetch('/api/users');
+        const users = await response.json();
+        modalUserSelect.innerHTML = '';
+        users.forEach(user => {
+            if (user.id != creatorId) { // Can't accept your own bet
+                const option = document.createElement('option');
+                option.value = user.id;
+                option.textContent = user.name;
+                modalUserSelect.appendChild(option);
+            }
+        });
+        modal.classList.remove('hidden');
+    }
+
+    function closeModal() {
+        modal.classList.add('hidden');
+        currentPredictionId = null;
+    }
+
+    document.getElementById('modal-cancel-btn').addEventListener('click', closeModal);
+    document.getElementById('modal-confirm-btn').addEventListener('click', async () => {
+        const userId = modalUserSelect.value;
+        if (!userId || !currentPredictionId) return;
+
+        await fetch(`/api/predictions/${currentPredictionId}/accept`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ user_id: userId }),
+        });
+        
+        closeModal();
+        fetchStats();
+        fetchPredictions();
+    });
+
+    // Main Event Listener
+    document.body.addEventListener('click', async (event) => {
+        const target = event.target;
+
+        if (target.classList.contains('accept-btn')) {
+            openModal(target.dataset.id, target.dataset.creatorId);
+        } else if (target.classList.contains('resolve-btn')) {
+            const id = target.dataset.id;
+            const outcome = target.dataset.outcome === 'true';
+            await fetch(`/api/predictions/${id}/resolve`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ outcome }),
+            });
+            fetchStats();
+            fetchPredictions();
+        } else if (target.classList.contains('redeem-btn')) {
+            const id = target.dataset.id;
+            await fetch(`/api/predictions/${id}/redeem`, { method: 'POST' });
+            fetchStats();
+            fetchPredictions();
+        }
+    });
+
+    fetchStats();
+    fetchPredictions();
+</script>
+{% endblock %}

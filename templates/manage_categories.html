@@ -1,0 +1,85 @@
+{% extends "layout.html" %}
+
+{% block content %}
+<div class="flex justify-between items-center mb-4">
+    <h1 class="text-2xl font-bold">Manage Categories</h1>
+    <a href="/" class="text-blue-500">Back to Dashboard</a>
+</div>
+
+<div class="bg-white p-4 rounded-lg shadow mb-4">
+    <h2 class="text-xl font-bold mb-2">Create Category</h2>
+    <form id="create-category-form" class="flex space-x-2">
+        <input type="text" id="new-category-name" placeholder="Category Name" class="flex-grow p-2 border rounded">
+        <button type="submit" class="bg-blue-500 text-white p-2 rounded">Create</button>
+    </form>
+</div>
+
+<div id="categories-list" class="space-y-2">
+    <!-- Categories will be loaded here -->
+</div>
+
+<script>
+    const createForm = document.getElementById('create-category-form');
+    const newCategoryNameInput = document.getElementById('new-category-name');
+    const categoriesList = document.getElementById('categories-list');
+
+    async function fetchCategories() {
+        const response = await fetch('/api/categories');
+        const categories = await response.json();
+        categoriesList.innerHTML = '';
+        for (const category of categories) {
+            const div = document.createElement('div');
+            div.className = 'flex justify-between items-center bg-white p-2 rounded-lg shadow';
+            div.innerHTML = `
+                <span data-id="${category.id}">${category.name}</span>
+                <div>
+                    <button class="edit-btn text-yellow-500 mr-2">Edit</button>
+                    <button class="delete-btn text-red-500">Delete</button>
+                </div>
+            `;
+            categoriesList.appendChild(div);
+        }
+    }
+
+    createForm.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const name = newCategoryNameInput.value;
+        if (!name) return;
+        await fetch('/api/categories', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name }),
+        });
+        newCategoryNameInput.value = '';
+        fetchCategories();
+    });
+
+    categoriesList.addEventListener('click', async (event) => {
+        const target = event.target;
+        const parentDiv = target.closest('.justify-between');
+        if (!parentDiv) return;
+
+        const span = parentDiv.querySelector('span');
+        const id = span.dataset.id;
+
+        if (target.classList.contains('delete-btn')) {
+            if (confirm('Are you sure?')) {
+                await fetch(`/api/categories/${id}`, { method: 'DELETE' });
+                fetchCategories();
+            }
+        } else if (target.classList.contains('edit-btn')) {
+            const newName = prompt('Enter new name', span.textContent);
+            if (newName) {
+                await fetch(`/api/categories/${id}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name: newName }),
+                });
+                fetchCategories();
+            }
+        }
+    });
+
+    fetchCategories();
+</script>
+{% endblock %}

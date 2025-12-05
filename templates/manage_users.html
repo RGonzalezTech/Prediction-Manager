@@ -1,0 +1,85 @@
+{% extends "layout.html" %}
+
+{% block content %}
+<div class="flex justify-between items-center mb-4">
+    <h1 class="text-2xl font-bold">Manage Participants</h1>
+    <a href="/" class="text-blue-500">Back to Dashboard</a>
+</div>
+
+<div class="bg-white p-4 rounded-lg shadow mb-4">
+    <h2 class="text-xl font-bold mb-2">Create Participant</h2>
+    <form id="create-user-form" class="flex space-x-2">
+        <input type="text" id="new-user-name" placeholder="Participant Name" class="flex-grow p-2 border rounded">
+        <button type="submit" class="bg-blue-500 text-white p-2 rounded">Create</button>
+    </form>
+</div>
+
+<div id="users-list" class="space-y-2">
+    <!-- Users will be loaded here -->
+</div>
+
+<script>
+    const createForm = document.getElementById('create-user-form');
+    const newUserNameInput = document.getElementById('new-user-name');
+    const usersList = document.getElementById('users-list');
+
+    async function fetchUsers() {
+        const response = await fetch('/api/users');
+        const users = await response.json();
+        usersList.innerHTML = '';
+        for (const user of users) {
+            const div = document.createElement('div');
+            div.className = 'flex justify-between items-center bg-white p-2 rounded-lg shadow';
+            div.innerHTML = `
+                <span data-id="${user.id}">${user.name}</span>
+                <div>
+                    <button class="edit-btn text-yellow-500 mr-2">Edit</button>
+                    <button class="delete-btn text-red-500">Delete</button>
+                </div>
+            `;
+            usersList.appendChild(div);
+        }
+    }
+
+    createForm.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const name = newUserNameInput.value;
+        if (!name) return;
+        await fetch('/api/users', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name }),
+        });
+        newUserNameInput.value = '';
+        fetchUsers();
+    });
+
+    usersList.addEventListener('click', async (event) => {
+        const target = event.target;
+        const parentDiv = target.closest('.justify-between');
+        if (!parentDiv) return;
+        
+        const span = parentDiv.querySelector('span');
+        const id = span.dataset.id;
+
+        if (target.classList.contains('delete-btn')) {
+            if (confirm('Are you sure? Deleting a user will also delete all their predictions.')) {
+                await fetch(`/api/users/${id}`, { method: 'DELETE' });
+                fetchUsers();
+            }
+        } else if (target.classList.contains('edit-btn')) {
+            const newName = prompt('Enter new name', span.textContent);
+            if (newName) {
+                await fetch(`/api/users/${id}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name: newName }),
+                });
+                fetchUsers();
+            }
+        }
+    });
+
+    fetchUsers();
+</script>
+{% endblock %}

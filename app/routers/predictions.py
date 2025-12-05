@@ -1,0 +1,297 @@
+import datetime
+from typing import List, Optional
+
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.future import select
+
+from app.database.database import get_db
+from app.models.models import Category, Prediction, User
+
+from sqlalchemy.orm import selectinload
+
+router = APIRouter()
+
+class UserOut(BaseModel):
+
+    id: int
+
+    name: str
+
+    class Config:
+
+        orm_mode = True
+
+class PredictionCreate(BaseModel):
+
+    creator_id: int
+
+    description: str
+
+    confidence: float
+
+    category_id: int
+
+class CategoryOut(BaseModel):
+
+    id: int
+
+    name: str
+
+    class Config:
+
+        orm_mode = True
+
+class PredictionOut(PredictionCreate):
+
+    id: int
+
+    status: str
+
+    outcome: Optional[bool]
+
+    created_at: datetime.datetime
+
+    creator: UserOut
+
+    category: CategoryOut
+
+    opponent: Optional[UserOut] = None
+
+
+
+    class Config:
+
+        orm_mode = True
+
+class PredictionAccept(BaseModel):
+
+    user_id: int
+
+@router.post("/api/predictions/{prediction_id}/accept", response_model=PredictionOut)
+
+async def accept_prediction(
+
+    prediction_id: int,
+
+    acceptance: PredictionAccept,
+
+    db: AsyncSession = Depends(get_db),
+
+):
+
+    result = await db.execute(select(Prediction).where(Prediction.id == prediction_id))
+
+    db_prediction = result.scalars().first()
+
+    if not db_prediction:
+
+        raise HTTPException(status_code=404, detail="Prediction not found")
+
+    if db_prediction.status != "PENDING":
+
+        raise HTTPException(status_code=400, detail="This bet is not pending acceptance.")
+
+    if db_prediction.creator_id == acceptance.user_id:
+
+        raise HTTPException(status_code=400, detail="You cannot accept your own bet.")
+
+    db_prediction.opponent_id = acceptance.user_id
+
+    db_prediction.status = "OPEN"
+
+    await db.commit()
+
+    # Re-fetch the prediction with the relationships loaded
+
+    result = await db.execute(
+
+        select(Prediction)
+
+        .options(selectinload(Prediction.creator), selectinload(Prediction.category), selectinload(Prediction.opponent))
+
+        .where(Prediction.id == db_prediction.id)
+
+    )
+
+    accepted_prediction = result.scalars().first()
+
+    return accepted_prediction
+
+class PredictionResolve(BaseModel):
+
+    outcome: bool
+
+@router.post("/api/predictions", response_model=PredictionOut)
+
+async def create_prediction(
+
+    prediction: PredictionCreate, db: AsyncSession = Depends(get_db)
+
+):
+
+    db_prediction = Prediction(**prediction.dict())
+
+    db.add(db_prediction)
+
+    await db.commit()
+
+    # Re-fetch the prediction with the relationships loaded
+
+    result = await db.execute(
+
+        select(Prediction)
+
+        .options(selectinload(Prediction.creator), selectinload(Prediction.category), selectinload(Prediction.opponent))
+
+        .where(Prediction.id == db_prediction.id)
+
+    )
+
+    new_prediction = result.scalars().first()
+
+    return new_prediction
+
+@router.get("/api/predictions", response_model=List[PredictionOut])
+
+async def get_predictions(db: AsyncSession = Depends(get_db)):
+
+    result = await db.execute(
+
+        select(Prediction)
+
+        .options(selectinload(Prediction.creator), selectinload(Prediction.category), selectinload(Prediction.opponent))
+
+    )
+
+    predictions = result.scalars().all()
+
+    return predictions
+
+@router.post("/api/predictions/{prediction_id}/resolve", response_model=PredictionOut)
+
+async def resolve_prediction(
+
+    prediction_id: int,
+
+    prediction_resolve: PredictionResolve,
+
+    db: AsyncSession = Depends(get_db),
+
+):
+
+    result = await db.execute(select(Prediction).where(Prediction.id == prediction_id))
+
+    db_prediction = result.scalars().first()
+
+    if not db_prediction:
+
+        raise HTTPException(status_code=404, detail="Prediction not found")
+
+    db_prediction.outcome = prediction_resolve.outcome
+
+    db_prediction.status = "RESOLVED"
+
+    await db.commit()
+
+    # Re-fetch the prediction with the relationships loaded
+
+    result = await db.execute(
+
+        select(Prediction)
+
+        .options(selectinload(Prediction.creator), selectinload(Prediction.category), selectinload(Prediction.opponent))
+
+        .where(Prediction.id == db_prediction.id)
+
+    )
+
+    resolved_prediction = result.scalars().first()
+
+    return resolved_prediction
+
+@router.post("/api/predictions/{prediction_id}/redeem", response_model=PredictionOut)
+
+async def redeem_prediction(
+
+    prediction_id: int,
+
+    db: AsyncSession = Depends(get_db),
+
+):
+
+    result = await db.execute(select(Prediction).where(Prediction.id == prediction_id))
+
+    db_prediction = result.scalars().first()
+
+    if not db_prediction:
+
+        raise HTTPException(status_code=404, detail="Prediction not found")
+
+    db_prediction.status = "REDEEMED"
+
+    await db.commit()
+
+    # Re-fetch the prediction with the relationships loaded
+
+    result = await db.execute(
+
+        select(Prediction)
+
+        .options(selectinload(Prediction.creator), selectinload(Prediction.category), selectinload(Prediction.opponent))
+
+        .where(Prediction.id == db_prediction.id)
+
+    )
+
+    redeemed_prediction = result.scalars().first()
+
+    return redeemed_prediction
+
+from collections import defaultdict
+
+@router.get("/api/stats")
+async def get_stats(db: AsyncSession = Depends(get_db)):
+    # Get all users for name mapping
+    user_result = await db.execute(select(User))
+    users = user_result.scalars().all()
+    user_map = {user.id: user.name for user in users}
+
+    # Get all resolved predictions
+    prediction_result = await db.execute(
+        select(Prediction).where(Prediction.status == "RESOLVED")
+    )
+    predictions = prediction_result.scalars().all()
+    
+    # Calculate gross debts
+    debts = defaultdict(float) # Key: (debtor_id, creditor_id)
+    for p in predictions:
+        # Skip predictions that don't have an opponent
+        if p.opponent_id is None:
+            continue
+
+        odds_ratio = p.confidence / (1 - p.confidence)
+        
+        if p.outcome:  # Creator wins, opponent is the debtor
+            debtor_id = p.opponent_id
+            creditor_id = p.creator_id
+            amount = 1.0
+        else:  # Creator loses, creator is the debtor
+            debtor_id = p.creator_id
+            creditor_id = p.opponent_id
+            amount = odds_ratio
+        
+        debts[(debtor_id, creditor_id)] += amount
+
+    # Format the response
+    formatted_debts = [
+        {
+            "debtor": user_map.get(debtor_id, "Unknown"),
+            "creditor": user_map.get(creditor_id, "Unknown"),
+            "amount": round(amount, 2),
+        }
+        for (debtor_id, creditor_id), amount in debts.items() if amount > 0
+    ]
+
+    return formatted_debts
