@@ -58,9 +58,6 @@
                 }
 
                 data.forEach(user => {
-                    const totalGames = user.wins + user.losses;
-                    const winPercentage = totalGames > 0 ? ((user.wins / totalGames) * 100).toFixed(0) : '0';
-                    
                     let categoriesHtml = '<div class="space-y-4">';
                     for (const [category, stats] of Object.entries(user.by_category)) {
                         const catTotal = stats.wins + stats.losses;
@@ -79,6 +76,37 @@
                     }
                     categoriesHtml += '</div>';
 
+                    let trophyCaseHtml = '<div class="space-y-4">';
+                    if (user.biggest_upset) {
+                        trophyCaseHtml += `
+                            <div class="flex items-start">
+                                <div class="text-green-500 mr-3"><svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-8.707l-3-3a1 1 0 00-1.414 0l-3 3a1 1 0 001.414 1.414L9 9.414V13a1 1 0 102 0V9.414l1.293 1.293a1 1 0 001.414-1.414z" clip-rule="evenodd" /></svg></div>
+                                <div>
+                                    <p class="font-semibold text-gray-700">Biggest Upset (+${user.biggest_upset.units.toFixed(2)} units)</p>
+                                    <p class="text-sm text-gray-500 italic">"${user.biggest_upset.description}"</p>
+                                </div>
+                            </div>
+                        `;
+                    }
+                    if (user.worst_beat) {
+                        trophyCaseHtml += `
+                            <div class="flex items-start">
+                                <div class="text-red-500 mr-3"><svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm-1.707-4.293l-3-3a1 1 0 011.414-1.414L9 10.586V7a1 1 0 112 0v3.586l2.293-2.293a1 1 0 011.414 1.414l-3 3a1 1 0 01-1.414 0z" clip-rule="evenodd" /></svg></div>
+                                <div>
+                                    <p class="font-semibold text-gray-700">Worst Beat (${user.worst_beat.units.toFixed(2)} units)</p>
+                                    <p class="text-sm text-gray-500 italic">"${user.worst_beat.description}"</p>
+                                </div>
+                            </div>
+                        `;
+                    }
+                    if (!user.biggest_upset && !user.worst_beat) {
+                        trophyCaseHtml += '<p class="text-center text-gray-500">No notable predictions yet.</p>';
+                    }
+                    trophyCaseHtml += '</div>';
+
+                    const netUnitsClass = user.net_units >= 0 ? 'text-green-600' : 'text-red-600';
+                    const netUnitsSign = user.net_units >= 0 ? '+' : '';
+
                     const userCard = `
                         <div class="bg-white rounded-xl shadow-lg overflow-hidden">
                             <header class="bg-gray-800 p-4 text-center">
@@ -88,19 +116,27 @@
                                 <div class="grid grid-cols-3 text-center mb-6 pb-6 border-b">
                                     <div>
                                         <p class="text-2xl font-bold text-green-500">${user.wins}</p>
-                                        <p class="text-sm text-gray-500">Wins</p>
+                                        <p class="text-sm text-gray-500 uppercase">Wins</p>
                                     </div>
                                     <div>
                                         <p class="text-2xl font-bold text-red-500">${user.losses}</p>
-                                        <p class="text-sm text-gray-500">Losses</p>
+                                        <p class="text-sm text-gray-500 uppercase">Losses</p>
                                     </div>
                                     <div>
-                                        <p class="text-2xl font-bold text-blue-500">${winPercentage}%</p>
-                                        <p class="text-sm text-gray-500">Win Rate</p>
+                                        <p class="text-2xl font-bold ${netUnitsClass}">${netUnitsSign}${user.net_units.toFixed(2)}</p>
+                                        <p class="text-sm text-gray-500 uppercase">Net Units</p>
                                     </div>
                                 </div>
-                                <h3 class="text-lg font-semibold text-center text-gray-700 mb-4">Category Performance</h3>
-                                ${categoriesHtml}
+                                <div class="grid md:grid-cols-2 gap-8">
+                                    <div>
+                                        <h3 class="text-lg font-semibold text-center text-gray-700 mb-4">Trophy Case</h3>
+                                        ${trophyCaseHtml}
+                                    </div>
+                                    <div>
+                                        <h3 class="text-lg font-semibold text-center text-gray-700 mb-4">Category Performance</h3>
+                                        ${categoriesHtml}
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     `;
