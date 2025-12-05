@@ -29,3 +29,7 @@ async def manage_categories(request: Request):
 @app.get("/manage-users")
 async def manage_users(request: Request):
     return templates.TemplateResponse("manage_users.html", {"request": request})
+
+@app.get("/stats")
+async def stats(request: Request):
+    return templates.TemplateResponse("stats.html", {"request": request})

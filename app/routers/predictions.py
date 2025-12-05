@@ -222,3 +222,80 @@ async def get_stats(db: AsyncSession = Depends(get_db)):
     ]
 
     return formatted_debts
+
+class CategoryStat(BaseModel):
+    wins: int
+    losses: int
+
+class UserStats(BaseModel):
+    id: int
+    name: str
+    wins: int
+    losses: int
+    by_category: dict[str, CategoryStat]
+
+
+@router.get("/api/user-stats", response_model=list[UserStats])
+async def get_user_stats(db: AsyncSession = Depends(get_db)):
+    users_result = await db.execute(select(User))
+    users = users_result.scalars().all()
+
+    predictions_result = await db.execute(
+        select(Prediction)
+        .where(Prediction.status.in_(["RESOLVED", "REDEEMED"]))
+        .options(
+            selectinload(Prediction.creator),
+            selectinload(Prediction.opponent),
+            selectinload(Prediction.category),
+        )
+    )
+    predictions = predictions_result.scalars().all()
+
+    stats = {
+        user.id: UserStats(
+            id=user.id,
+            name=user.name,
+            wins=0,
+            losses=0,
+            by_category={},
+        )
+        for user in users
+    }
+
+    for p in predictions:
+        if p.opponent_id is None:
+            continue
+
+        creator_wins = p.outcome
+        opponent_wins = not p.outcome
+
+        # Update creator stats
+        if creator_wins:
+            stats[p.creator_id].wins += 1
+        else:
+            stats[p.creator_id].losses += 1
+        
+        category_name = p.category.name
+        if category_name not in stats[p.creator_id].by_category:
+            stats[p.creator_id].by_category[category_name] = CategoryStat(wins=0, losses=0)
+        
+        if creator_wins:
+            stats[p.creator_id].by_category[category_name].wins += 1
+        else:
+            stats[p.creator_id].by_category[category_name].losses += 1
+        
+        # Update opponent stats
+        if opponent_wins:
+            stats[p.opponent_id].wins += 1
+        else:
+            stats[p.opponent_id].losses += 1
+        
+        if category_name not in stats[p.opponent_id].by_category:
+            stats[p.opponent_id].by_category[category_name] = CategoryStat(wins=0, losses=0)
+
+        if opponent_wins:
+            stats[p.opponent_id].by_category[category_name].wins += 1
+        else:
+            stats[p.opponent_id].by_category[category_name].losses += 1
+            
+    return list(stats.values())
