@@ -94,8 +94,24 @@
     function createPredictionCard(p) {
         const card = document.createElement('div');
         card.className = 'bg-white p-4 rounded-lg shadow space-y-2';
-        const confidence = p.confidence * 100;
-        const oddsRatio = p.confidence / (1 - p.confidence);
+        const confidencePercentage = p.confidence * 100;
+        
+        let oddsText;
+        if (p.confidence >= 0.5) {
+            const oddsRatio = p.confidence / (1 - p.confidence);
+            if (Math.round(oddsRatio) === oddsRatio) {
+                oddsText = `Risking <strong>${oddsRatio.toFixed(0)}</strong> units to win <strong>1.0</strong> unit`;
+            } else {
+                oddsText = `Risking <strong>${oddsRatio.toFixed(1)}</strong> units to win <strong>1.0</strong> unit`;
+            }
+        } else {
+            const oddsRatio = (1 - p.confidence) / p.confidence;
+            if (Math.round(oddsRatio) === oddsRatio) {
+                oddsText = `Risking <strong>1.0</strong> unit to win <strong>${oddsRatio.toFixed(0)}</strong> units`;
+            } else {
+                oddsText = `Risking <strong>1.0</strong> unit to win <strong>${oddsRatio.toFixed(1)}</strong> units`;
+            }
+        }
 
         let opponentText = '';
         if (p.opponent) {
@@ -109,12 +125,13 @@
             </div>
             <div class="text-sm text-gray-600">Created by: <strong>${p.creator.name}</strong></div>
             ${opponentText}
-            <div class="text-sm text-gray-600">Risking <strong>${oddsRatio.toFixed(1)}</strong> units to win <strong>1</strong> unit (<strong>${confidence.toFixed(0)}%</strong> confidence)</div>
+            <div class="text-sm text-gray-600">${oddsText} (<strong>${confidencePercentage.toFixed(0)}%</strong> confidence)</div>
             <div class="border-t pt-2">
         `;
 
         if (p.status === 'PENDING') {
             cardContent += `<button class="accept-btn bg-purple-500 text-white w-full py-2 rounded-lg hover:bg-purple-600" data-id="${p.id}" data-creator-id="${p.creator.id}">Accept Bet</button>`;
+            cardContent += `<button class="delete-btn bg-red-500 text-white py-2 rounded-lg hover:bg-red-600 w-full mt-2" data-id="${p.id}">Delete</button>`;
         } else if (p.status === 'OPEN') {
             cardContent += `
                 <p class="text-center text-sm font-semibold mb-2">What was the outcome?</p>
@@ -124,7 +141,20 @@
                 </div>`;
         } else if (p.status === 'RESOLVED') {
             const creatorWon = p.outcome === true;
-            let summaryText = creatorWon ? `<strong class="text-green-500">${p.creator.name} won!</strong> ${p.opponent.name} owes 1 unit.` : `<strong class="text-red-500">${p.creator.name} lost!</strong> Owes ${p.opponent.name} ${oddsRatio.toFixed(2)} units.`;
+            let summaryText;
+            if (creatorWon) {
+                let amountOwed = 1.0;
+                if (p.confidence < 0.5) {
+                    amountOwed = (1 - p.confidence) / p.confidence;
+                }
+                summaryText = `<strong class="text-green-500">${p.creator.name} won!</strong> ${p.opponent.name} owes ${amountOwed.toFixed(1)} unit(s).`;
+            } else {
+                let amountOwed = 1.0;
+                if (p.confidence >= 0.5) {
+                    amountOwed = p.confidence / (1 - p.confidence);
+                }
+                summaryText = `<strong class="text-red-500">${p.creator.name} lost!</strong> Owes ${p.opponent.name} ${amountOwed.toFixed(1)} unit(s).`;
+            }
             cardContent += `<div class="text-center mb-2">${summaryText}</div><button class="redeem-btn bg-blue-500 text-white w-full py-2 rounded-lg hover:bg-blue-600" data-id="${p.id}">Mark as Paid</button>`;
         }
         cardContent += `</div>`;
@@ -177,7 +207,16 @@
     document.body.addEventListener('click', async (event) => {
         const target = event.target;
 
-        if (target.classList.contains('accept-btn')) {
+        if (target.classList.contains('delete-btn')) {
+            const id = target.dataset.id;
+            if (window.confirm('Are you sure you want to delete this prediction?')) {
+                await fetch(`/api/predictions/${id}`, {
+                    method: 'DELETE',
+                });
+                fetchPredictions();
+                fetchStats();
+            }
+        } else if (target.classList.contains('accept-btn')) {
             openModal(target.dataset.id, target.dataset.creatorId);
         } else if (target.classList.contains('resolve-btn')) {
             const id = target.dataset.id;

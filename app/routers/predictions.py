@@ -153,20 +153,37 @@ async def create_prediction(
 
     return new_prediction
 
-@router.get("/api/predictions", response_model=List[PredictionOut])
 
-async def get_predictions(db: AsyncSession = Depends(get_db)):
 
+
+
+@router.delete("/api/predictions/{prediction_id}", status_code=204)
+async def delete_prediction(prediction_id: int, db: AsyncSession = Depends(get_db)):
     result = await db.execute(
-
-        select(Prediction)
-
-        .options(selectinload(Prediction.creator), selectinload(Prediction.category), selectinload(Prediction.opponent))
-
+        select(Prediction).where(Prediction.id == prediction_id)
     )
+    db_prediction = result.scalars().first()
 
+    if not db_prediction:
+        raise HTTPException(status_code=404, detail="Prediction not found")
+
+    if db_prediction.status != "PENDING":
+        raise HTTPException(
+            status_code=400, detail="Only pending predictions can be deleted"
+        )
+
+    await db.delete(db_prediction)
+    await db.commit()
+    return
+
+
+@router.get("/api/predictions", response_model=List[PredictionOut])
+async def get_predictions(db: AsyncSession = Depends(get_db)):
+    result = await db.execute(
+        select(Prediction)
+        .options(selectinload(Prediction.creator), selectinload(Prediction.category), selectinload(Prediction.opponent))
+    )
     predictions = result.scalars().all()
-
     return predictions
 
 @router.post("/api/predictions/{prediction_id}/resolve", response_model=PredictionOut)
@@ -271,16 +288,26 @@ async def get_stats(db: AsyncSession = Depends(get_db)):
         if p.opponent_id is None:
             continue
 
-        odds_ratio = p.confidence / (1 - p.confidence)
-        
-        if p.outcome:  # Creator wins, opponent is the debtor
-            debtor_id = p.opponent_id
-            creditor_id = p.creator_id
-            amount = 1.0
-        else:  # Creator loses, creator is the debtor
-            debtor_id = p.creator_id
-            creditor_id = p.opponent_id
-            amount = odds_ratio
+        if p.confidence >= 0.5:
+            odds_ratio = p.confidence / (1 - p.confidence)
+            if p.outcome:  # Creator wins
+                debtor_id = p.opponent_id
+                creditor_id = p.creator_id
+                amount = 1.0
+            else:  # Creator loses
+                debtor_id = p.creator_id
+                creditor_id = p.opponent_id
+                amount = odds_ratio
+        else:  # p.confidence < 0.5
+            odds_ratio = (1 - p.confidence) / p.confidence
+            if p.outcome:  # Creator wins
+                debtor_id = p.opponent_id
+                creditor_id = p.creator_id
+                amount = odds_ratio
+            else:  # Creator loses
+                debtor_id = p.creator_id
+                creditor_id = p.opponent_id
+                amount = 1.0
         
         debts[(debtor_id, creditor_id)] += amount
 
