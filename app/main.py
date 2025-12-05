@@ -15,21 +15,17 @@ templates = Jinja2Templates(directory="templates")
 @app.on_event("startup")
 async def on_startup():
     await init_db()
-
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 @app.get("/")
 async def read_root(request: Request):
     return templates.TemplateResponse("dashboard.html", {"request": request})
-
 @app.get("/new")
 async def new_prediction(request: Request):
     return templates.TemplateResponse("new_prediction.html", {"request": request})
-
 @app.get("/manage-categories")
 async def manage_categories(request: Request):
     return templates.TemplateResponse("manage_categories.html", {"request": request})
-
 @app.get("/manage-users")
 async def manage_users(request: Request):
     return templates.TemplateResponse("manage_users.html", {"request": request})

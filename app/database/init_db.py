@@ -18,7 +18,6 @@ async def init_db():
 
         await conn.run_sync(run_migration_if_needed)
         await conn.run_sync(Base.metadata.create_all)
-
     async with SessionLocal() as session:
         if (await session.execute(User.__table__.select())).first() is None:
             session.add_all(
@@ -28,7 +27,6 @@ async def init_db():
                 ]
             )
             await session.commit()
-
         if (await session.execute(Category.__table__.select())).first() is None:
             session.add_all(
                 [

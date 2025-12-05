@@ -8,12 +8,12 @@ from typing import List
 
 router = APIRouter()
 
+
 class CategoryCreate(BaseModel):
     name: str
 
 class CategoryOut(CategoryCreate):
     id: int
-
     class Config:
         orm_mode = True
 

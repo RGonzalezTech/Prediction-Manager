@@ -12,11 +12,11 @@ from sqlalchemy.orm import declarative_base, relationship
 
 Base = declarative_base()
 
+
 class User(Base):
     __tablename__ = "users"
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, unique=True, index=True)
-
     predictions = relationship(
         "Prediction",
         foreign_keys="[Prediction.creator_id]",
@@ -24,11 +24,11 @@ class User(Base):
         cascade="all, delete-orphan",
     )
 
+
 class Category(Base):
     __tablename__ = "categories"
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, unique=True, index=True)
-
     predictions = relationship("Prediction", back_populates="category")
 
 class Prediction(Base):
@@ -42,7 +42,6 @@ class Prediction(Base):
     status = Column(String, default="PENDING")
     outcome = Column(Boolean, nullable=True)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
-
     creator = relationship("User", back_populates="predictions", foreign_keys=[creator_id])
     opponent = relationship("User", foreign_keys=[opponent_id])
     category = relationship("Category", back_populates="predictions")
