@@ -11,7 +11,6 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy the rest of the application's code
-COPY ./static /app/static
 COPY ./templates /app/templates
 COPY ./app /app
 
