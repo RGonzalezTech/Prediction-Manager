@@ -222,3 +222,115 @@ async def get_stats(db: AsyncSession = Depends(get_db)):
     ]
 
     return formatted_debts
+
+class TrophyPrediction(BaseModel):
+    description: str
+    units: float
+
+class CategoryStat(BaseModel):
+    wins: int
+    losses: int
+
+class UserStats(BaseModel):
+    id: int
+    name: str
+    wins: int
+    losses: int
+    net_units: float
+    biggest_upset: Optional[TrophyPrediction] = None
+    worst_beat: Optional[TrophyPrediction] = None
+    by_category: dict[str, CategoryStat]
+
+def calculate_units(prediction: Prediction):
+    if prediction.confidence >= 0.5:
+        odds_ratio = prediction.confidence / (1 - prediction.confidence)
+        if prediction.outcome: # Creator wins
+            return 1.0
+        else: # Creator loses
+            return -odds_ratio
+    else: # prediction.confidence < 0.5
+        odds_ratio = (1 - prediction.confidence) / prediction.confidence
+        if prediction.outcome: # Creator wins
+            return odds_ratio
+        else: # Creator loses
+            return -1.0
+
+@router.get("/api/user-stats", response_model=list[UserStats])
+async def get_user_stats(db: AsyncSession = Depends(get_db)):
+    users_result = await db.execute(select(User))
+    users = users_result.scalars().all()
+
+    predictions_result = await db.execute(
+        select(Prediction)
+        .where(Prediction.status.in_(["RESOLVED", "REDEEMED"]))
+        .options(
+            selectinload(Prediction.creator),
+            selectinload(Prediction.opponent),
+            selectinload(Prediction.category),
+        )
+    )
+    predictions = predictions_result.scalars().all()
+
+    stats = {
+        user.id: UserStats(
+            id=user.id,
+            name=user.name,
+            wins=0,
+            losses=0,
+            net_units=0.0,
+            by_category={},
+        )
+        for user in users
+    }
+
+    for p in predictions:
+        if p.opponent_id is None:
+            continue
+
+        units_for_creator = calculate_units(p)
+        
+        # Update stats for creator
+        stats[p.creator_id].net_units += units_for_creator
+        if units_for_creator > 0:
+            stats[p.creator_id].wins += 1
+            if not stats[p.creator_id].biggest_upset or units_for_creator > stats[p.creator_id].biggest_upset.units:
+                stats[p.creator_id].biggest_upset = TrophyPrediction(description=p.description, units=units_for_creator)
+        else:
+            stats[p.creator_id].losses += 1
+            if not stats[p.creator_id].worst_beat or units_for_creator < stats[p.creator_id].worst_beat.units:
+                 stats[p.creator_id].worst_beat = TrophyPrediction(description=p.description, units=units_for_creator)
+
+        # Update stats for opponent
+        stats[p.opponent_id].net_units -= units_for_creator
+        if units_for_creator < 0:
+             stats[p.opponent_id].wins += 1
+             if not stats[p.opponent_id].biggest_upset or -units_for_creator > stats[p.opponent_id].biggest_upset.units:
+                 stats[p.opponent_id].biggest_upset = TrophyPrediction(description=p.description, units=-units_for_creator)
+        else:
+            stats[p.opponent_id].losses += 1
+            if not stats[p.opponent_id].worst_beat or -units_for_creator < stats[p.opponent_id].worst_beat.units:
+                 stats[p.opponent_id].worst_beat = TrophyPrediction(description=p.description, units=-units_for_creator)
+
+
+        # --- W/L by Category (no change from before) ---
+        category_name = p.category.name
+        creator_wins = p.outcome
+        opponent_wins = not p.outcome
+
+        # Creator category stats
+        if category_name not in stats[p.creator_id].by_category:
+            stats[p.creator_id].by_category[category_name] = CategoryStat(wins=0, losses=0)
+        if creator_wins:
+            stats[p.creator_id].by_category[category_name].wins += 1
+        else:
+            stats[p.creator_id].by_category[category_name].losses += 1
+        
+        # Opponent category stats
+        if category_name not in stats[p.opponent_id].by_category:
+            stats[p.opponent_id].by_category[category_name] = CategoryStat(wins=0, losses=0)
+        if opponent_wins:
+            stats[p.opponent_id].by_category[category_name].wins += 1
+        else:
+            stats[p.opponent_id].by_category[category_name].losses += 1
+
+    return list(stats.values())

@@ -1,0 +1,152 @@
+{% extends "layout.html" %}
+
+{% block title %}Prediction Stats{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    <!-- Scoreboard -->
+    <div id="scoreboard" class="bg-white p-6 rounded-xl shadow-lg">
+        <h2 class="text-xl font-bold text-center text-gray-700 mb-4">Overall Scoreboard</h2>
+        <div id="debt-details" class="text-center">
+            <p class="text-gray-500">Loading scores...</p>
+        </div>
+    </div>
+
+    <!-- User Stats Container -->
+    <div id="user-stats-container" class="space-y-8">
+        <!-- User cards will be loaded here -->
+    </div>
+</div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const userStatsContainer = document.getElementById('user-stats-container');
+        const debtContainer = document.getElementById('debt-details');
+
+        // Fetch H2H Debt Stats
+        fetch('/api/stats')
+            .then(response => response.json())
+            .then(debts => {
+                debtContainer.innerHTML = '';
+                if (debts.length === 0) {
+                    debtContainer.innerHTML = '<p class="text-lg font-semibold text-green-600">All debts are settled!</p>';
+                    return;
+                }
+                const debtList = document.createElement('div');
+                debtList.className = 'space-y-2';
+                debts.forEach(debt => {
+                    const debtElement = document.createElement('p');
+                    debtElement.className = 'text-lg font-semibold';
+                    debtElement.innerHTML = `<span class="text-red-500">${debt.debtor}</span> owes <span class="text-green-500">${debt.creditor}</span>: <span class="text-gray-800">${debt.amount.toFixed(2)}</span> Units`;
+                    debtList.appendChild(debtElement);
+                });
+                debtContainer.appendChild(debtList);
+            })
+            .catch(error => {
+                console.error('Error fetching scoreboard stats:', error);
+                debtContainer.innerHTML = '<p class="text-red-500">Could not load scoreboard.</p>';
+            });
+
+        // Fetch User Performance Stats
+        fetch('/api/user-stats')
+            .then(response => response.json())
+            .then(data => {
+                userStatsContainer.innerHTML = ''; // Clear loading state
+                if (!data || data.length === 0) {
+                    userStatsContainer.innerHTML = '<p class="text-center text-gray-500">No user statistics to display yet.</p>';
+                    return;
+                }
+
+                data.forEach(user => {
+                    let categoriesHtml = '<div class="space-y-4">';
+                    for (const [category, stats] of Object.entries(user.by_category)) {
+                        const catTotal = stats.wins + stats.losses;
+                        const winPercent = catTotal > 0 ? (stats.wins / catTotal) * 100 : 0;
+                        categoriesHtml += `
+                            <div>
+                                <div class="flex justify-between items-center mb-1">
+                                    <span class="font-semibold text-gray-700">${category}</span>
+                                    <span class="text-sm font-medium text-gray-500">${stats.wins}W - ${stats.losses}L</span>
+                                </div>
+                                <div class="w-full bg-gray-200 rounded-full h-2.5">
+                                    <div class="bg-blue-500 h-2.5 rounded-full" style="width: ${winPercent}%"></div>
+                                </div>
+                            </div>
+                        `;
+                    }
+                    categoriesHtml += '</div>';
+
+                    let trophyCaseHtml = '<div class="space-y-4">';
+                    if (user.biggest_upset) {
+                        trophyCaseHtml += `
+                            <div class="flex items-start">
+                                <div class="text-green-500 mr-3"><svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-8.707l-3-3a1 1 0 00-1.414 0l-3 3a1 1 0 001.414 1.414L9 9.414V13a1 1 0 102 0V9.414l1.293 1.293a1 1 0 001.414-1.414z" clip-rule="evenodd" /></svg></div>
+                                <div>
+                                    <p class="font-semibold text-gray-700">Biggest Upset (+${user.biggest_upset.units.toFixed(2)} units)</p>
+                                    <p class="text-sm text-gray-500 italic">"${user.biggest_upset.description}"</p>
+                                </div>
+                            </div>
+                        `;
+                    }
+                    if (user.worst_beat) {
+                        trophyCaseHtml += `
+                            <div class="flex items-start">
+                                <div class="text-red-500 mr-3"><svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm-1.707-4.293l-3-3a1 1 0 011.414-1.414L9 10.586V7a1 1 0 112 0v3.586l2.293-2.293a1 1 0 011.414 1.414l-3 3a1 1 0 01-1.414 0z" clip-rule="evenodd" /></svg></div>
+                                <div>
+                                    <p class="font-semibold text-gray-700">Worst Beat (${user.worst_beat.units.toFixed(2)} units)</p>
+                                    <p class="text-sm text-gray-500 italic">"${user.worst_beat.description}"</p>
+                                </div>
+                            </div>
+                        `;
+                    }
+                    if (!user.biggest_upset && !user.worst_beat) {
+                        trophyCaseHtml += '<p class="text-center text-gray-500">No notable predictions yet.</p>';
+                    }
+                    trophyCaseHtml += '</div>';
+
+                    const netUnitsClass = user.net_units >= 0 ? 'text-green-600' : 'text-red-600';
+                    const netUnitsSign = user.net_units >= 0 ? '+' : '';
+
+                    const userCard = `
+                        <div class="bg-white rounded-xl shadow-lg overflow-hidden">
+                            <header class="bg-gray-800 p-4 text-center">
+                                <h2 class="text-2xl font-bold text-white">${user.name}</h2>
+                            </header>
+                            <div class="p-6">
+                                <div class="grid grid-cols-3 text-center mb-6 pb-6 border-b">
+                                    <div>
+                                        <p class="text-2xl font-bold text-green-500">${user.wins}</p>
+                                        <p class="text-sm text-gray-500 uppercase">Wins</p>
+                                    </div>
+                                    <div>
+                                        <p class="text-2xl font-bold text-red-500">${user.losses}</p>
+                                        <p class="text-sm text-gray-500 uppercase">Losses</p>
+                                    </div>
+                                    <div>
+                                        <p class="text-2xl font-bold ${netUnitsClass}">${netUnitsSign}${user.net_units.toFixed(2)}</p>
+                                        <p class="text-sm text-gray-500 uppercase">Net Units</p>
+                                    </div>
+                                </div>
+                                <div class="grid md:grid-cols-2 gap-8">
+                                    <div>
+                                        <h3 class="text-lg font-semibold text-center text-gray-700 mb-4">Trophy Case</h3>
+                                        ${trophyCaseHtml}
+                                    </div>
+                                    <div>
+                                        <h3 class="text-lg font-semibold text-center text-gray-700 mb-4">Category Performance</h3>
+                                        ${categoriesHtml}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                    userStatsContainer.innerHTML += userCard;
+                });
+            })
+            .catch(error => {
+                console.error('Error fetching user stats:', error);
+                userStatsContainer.innerHTML = '<p class="text-center text-red-500">Could not load user stats.</p>';
+            });
+    });
+</script>
+{% endblock %}
