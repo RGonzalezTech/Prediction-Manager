@@ -33,3 +33,7 @@ async def manage_users(request: Request):
 @app.get("/stats")
 async def stats(request: Request):
     return templates.TemplateResponse("stats.html", {"request": request})
+
+@app.get("/history")
+async def history(request: Request):
+    return templates.TemplateResponse("history.html", {"request": request})

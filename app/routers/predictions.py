@@ -104,10 +104,6 @@ async def delete_prediction(prediction_id: int, db: AsyncSession = Depends(get_d
     db_prediction = result.scalars().first()
     if not db_prediction:
         raise HTTPException(status_code=404, detail="Prediction not found")
-    if db_prediction.status != "PENDING":
-        raise HTTPException(
-            status_code=400, detail="Only pending predictions can be deleted"
-        )
 
     await db.delete(db_prediction)
     await db.commit()
