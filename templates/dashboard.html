@@ -123,7 +123,6 @@
 
         if (p.status === 'PENDING') {
             cardContent += `<button class="accept-btn bg-purple-500 text-white w-full py-2 rounded-lg hover:bg-purple-600" data-id="${p.id}" data-creator-id="${p.creator.id}">Accept Bet</button>`;
-            cardContent += `<button class="delete-btn bg-red-500 text-white py-2 rounded-lg hover:bg-red-600 w-full mt-2" data-id="${p.id}">Delete</button>`;
         } else if (p.status === 'OPEN') {
             cardContent += `
                 <p class="text-center text-sm font-semibold mb-2">What was the outcome?</p>
@@ -149,6 +148,15 @@
             }
             cardContent += `<div class="text-center mb-2">${summaryText}</div><button class="redeem-btn bg-blue-500 text-white w-full py-2 rounded-lg hover:bg-blue-600" data-id="${p.id}">Mark as Paid</button>`;
         }
+        
+        cardContent += `
+            <button class="delete-btn bg-red-500 text-white p-2 rounded-lg hover:bg-red-600 mt-2 inline-flex items-center justify-center" data-id="${p.id}" title="Delete prediction">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                </svg>
+            </button>
+        `;
+
         cardContent += `</div>`;
         card.innerHTML = cardContent;
         return card;
@@ -199,8 +207,14 @@
     document.body.addEventListener('click', async (event) => {
         const target = event.target;
 
-        if (target.classList.contains('delete-btn')) {
-            const id = target.dataset.id;
+        // Use closest() to handle clicks on child elements (like SVG icons)
+        const deleteBtn = target.closest('.delete-btn');
+        const acceptBtn = target.closest('.accept-btn');
+        const resolveBtn = target.closest('.resolve-btn');
+        const redeemBtn = target.closest('.redeem-btn');
+
+        if (deleteBtn) {
+            const id = deleteBtn.dataset.id;
             if (window.confirm('Are you sure you want to delete this prediction?')) {
                 await fetch(`/api/predictions/${id}`, {
                     method: 'DELETE',
@@ -208,11 +222,11 @@
                 fetchPredictions();
                 fetchStats();
             }
-        } else if (target.classList.contains('accept-btn')) {
-            openModal(target.dataset.id, target.dataset.creatorId);
-        } else if (target.classList.contains('resolve-btn')) {
-            const id = target.dataset.id;
-            const outcome = target.dataset.outcome === 'true';
+        } else if (acceptBtn) {
+            openModal(acceptBtn.dataset.id, acceptBtn.dataset.creatorId);
+        } else if (resolveBtn) {
+            const id = resolveBtn.dataset.id;
+            const outcome = resolveBtn.dataset.outcome === 'true';
             await fetch(`/api/predictions/${id}/resolve`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -220,8 +234,8 @@
             });
             fetchStats();
             fetchPredictions();
-        } else if (target.classList.contains('redeem-btn')) {
-            const id = target.dataset.id;
+        } else if (redeemBtn) {
+            const id = redeemBtn.dataset.id;
             await fetch(`/api/predictions/${id}/redeem`, { method: 'POST' });
             fetchStats();
             fetchPredictions();
